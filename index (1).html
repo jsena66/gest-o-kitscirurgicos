@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Plataforma de Gestão Cirúrgica v8.0 - Aprimorada por Manus</title>
+        <script src="https://cdn.tailwindcss.com/3.4.0"></script>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+        <style>
+            /* Estilos gerais e para componentes da UI */
+            body { font-family: 'Inter', sans-serif; }
+            .sidebar-icon { width: 24px; height: 24px; }
+            .modal-backdrop {
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background-color: rgba(0, 0, 0, 0.6 ); z-index: 40;
+                backdrop-filter: blur(4px);
+            }
+            .modal {
+                position: fixed; top: 50%; left: 50%;
+                transform: translate(-50%, -50%); z-index: 50;
+                max-height: 90vh;
+            }
+            .toast {
+                position: fixed; bottom: 20px; right: 20px; z-index: 100;
+                transition: opacity 0.5s, transform 0.5s;
+            }
+            .loader {
+                border-top-color: #3498db;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            /* Animação para entrada de modais */
+            @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -45%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+            .modal-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+            /* Scrollbar customizada */
+            ::-webkit-scrollbar { width: 8px; }
+            ::-webkit-scrollbar-track { background: #f1f1f1; }
+            ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+            ::-webkit-scrollbar-thumb:hover { background: #55 and 5. } }
+        </style>
+    </head>
+    <body class="bg-gray-100 antialiased">
+        <!-- Loader inicial da aplicação -->
+        <div id="app-loader" class="fixed inset-0 bg-gray-50 flex items-center justify-center z-[100]">
+            <div class="text-center">
+                <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-32 w-32 mx-auto"></div>
+                <p class="mt-4 text-lg text-gray-600">Carregando plataforma...</p>
+            </div>
+        </div>
+        <div class="flex h-screen">
+            <!-- Barra de Navegação -->
+            <aside class="w-64 bg-gray-800 text-white flex flex-col flex-shrink-0">
+                <div class="h-16 flex items-center justify-center text-2xl font-bold border-b border-0.5px-solid-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" fill-rule="evenodd" /></svg>
+                    GestãoCir
+                </div>
+                <nav id="sidebar-nav" class="flex-1 px-4 py-6 space-y-2"></nav>
+                <div class="p-4 border-b border-gray-700">
+                    <div class="text-sm font-medium">Usuário: Dr. Alan</div>
+                    <div class="text-xs text-gray-400">Administrador</div>
+                </div>
+            </aside>
+            <!-- Conteúdo Principal -->
+            <main id="main-content" class="flex-1 p-8 overflow-y-auto bg-gray-50"></main>
+        </div>
+        <!-- Contêiner para Modals e Notificações -->
+        <div id="modal-container"></div>
+        <div id="toast-container"></div>
+        <script>
+            // ===================================================================================
+            // --- MÓDULO 1: GESTÃO DE ESTADO E PERSISTÊNCIA ---
+            // ===================================================================================
+            let state = {
+                currentPage: 'dashboard',
+                products: [],
+                suppliers: [],
+                clients: [],
+                kits: [],
+                stockLots: [],
+                surgeries: [],
+                currentUser: { name: 'Dr. Alan', role: 'admin' },
+                // Dados de exemplo para popular a aplicação
+                initialData: {
+                    products: [
+                        { id: 'P001', name: 'Placa de Titânio 2.0mm', description: 'Placa para fixação óssea', costPrice: 150.00, sellPrice: 350.00, needsSerialNumber: true, supplierId: 'S01' },
+                        { id: 'P002', name: 'Parafuso de Titânio 2.0x8mm', description: 'Parafuso para fixação de placas', costPrice: 25.00, sellPrice: 60.00, needsSerialNumber: true, supplierId: 'S01' },
+                        { id: 'P003', name: 'Gaze Estéril (Pacote c/ 100)', description: 'Material de consumo para curativos', costPrice: 15.00, sellPrice: 30.00, needsSerialNumber: false, supplierId: 'S02' },
+                        { id: 'P004', name: 'Fio de Sutura Nylon 3-0', description: 'Fio cirúrgico não absorvível', costPrice: 8.00, sellPrice: 20.00, needsSerialNumber: false, supplierId: 'S02' },
+                    ],
+                    suppliers: [
+                        { id: 'S01', name: 'Titanium Medical', contact: 'contato@titaniumed.com' },
+                        { id: 'S02', name: 'Suture & Co.', contact: 'vendas@sutureco.com' },
+                    ],
+                    clients: [
+                        { id: 'C01', name: 'Hospital Central', address: 'Rua das Flores, 123' },
+                        { id: 'C02', name: 'Clínica Ortopédica Sul', address: 'Av. Principal, 456' },
+                    ],
+                    kits: [
+                        { id: 'K01', name: 'Kit Básico de Osteossíntese', products: [{ productId: 'P001', quantity: 2 }, { productId: 'P002', quantity: 8 }, { productId: 'P003', quantity: 1 }] }
+                    ],
+                    stockLots: [
+                        // Lotes para P001 (Placa)
+                        { id: 'L001', productId: 'P001', serialNumber: 'SN-A1B2C3D4', quantity: 1, initialQuantity: 1, entryDate: '2023-10-01' },
+                        { id: 'L002', productId: 'P001', serialNumber: 'SN-A1B2C3D5', quantity: 1, initialQuantity: 1, entryDate: '2023-10-01' },
+                        { id: 'L003', productId: 'P001', serialNumber: 'SN-A1B2C3D6', quantity: 1, initialQuantity: 1, entryDate: '2023-10-01' },
+                        // Lotes para P002 (Parafuso)
+                        { id: 'L004', productId: 'P002', serialNumber: 'SN-X9Y8Z7W6', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L005', productId: 'P002', serialNumber: 'SN-X9Y8Z7W7', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L006', productId: 'P002', serialNumber: 'SN-X9Y8Z7W8', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L007', productId: 'P002', serialNumber: 'SN-X9Y8Z7W9', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L008', productId: 'P002', serialNumber: 'SN-X9Y8Z7W0', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L009', productId: 'P002', serialNumber: 'SN-X9Y8Z7W1', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L010', productId: 'P002', serialNumber: 'SN-X9Y8Z7W2', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        { id: 'L011', productId: 'P002', serialNumber: 'SN-X9Y8Z7W3', quantity: 1, initialQuantity: 1, entryDate: '2023-10-02' },
+                        // Lote para P003 (Gaze) - Sem número de série, controle por lote
+                        { id: 'L012', productId: 'P003', serialNumber: 'BATCH-GZ-001', quantity: 50, initialQuantity: 50, entryDate: '2023-09-25' },
+                        // Lote para P004 (Fio de Sutura)
+                        { id: 'L013', productId: 'P004', serialNumber: 'BATCH-FS-001', quantity: 100, initialQuantity: 100, entryDate: '2023-09-20' },
+                    ],
+                    surgeries: [
+                        { id: 'C-2023-001', patientName: 'Carlos Silva', hospitalId: 'C01', date: '2023-10-28', status: 'Agendada', requiredMaterials: [{ productId: 'P001', quantity: 1 }, { productId: 'P002', quantity: 4 }, { productId: 'P004', quantity: 2 }], separatedMaterials: [], usedMaterials: [], returnedMaterials: [] }
+                    ]
+                }
+            };
+
+            // Função para salvar o estado no localStorage
+            const saveState = () => {
+                try {
+                    const stateToSave = { ...state };
+                    // Não salvamos os dados iniciais para não sobreescrever o estado modificado
+                    delete stateToSave.initialData;
+                    localStorage.setItem('surgicalManagementState', JSON.stringify(stateToSave));
+                } catch (e) {
+                    console.error("Erro ao salvar o estado:", e);
+                }
+            };
+
+            // Função para carregar o estado do localStorage
+            const loadState = () => {
+                try {
+                    const savedState = localStorage.getItem('surgicalManagementState');
+                    if (savedState) {
+                        return JSON.parse(savedState);
+                    } else {
+                        // Se não houver estado salvo, inicializa com os dados de exemplo
+                        const initialState = { ...state, ...state.initialData };
+                        delete initialState.initialData;
+                        return initialState;
+                    }
+                } catch (e) {
+                    console.error("Erro ao carregar o estado:", e);
+                    // Em caso de erro, retorna o estado inicial padrão
+                    const initialState = { ...state, ...state.initialData };
+                    delete initialState.initialData;
+                    return initialState;
+                }
+            };
+
+            // Inicializa o estado da aplicação
+            state = loadState();
+
+            // ===================================================================================
+            // --- MÓDULO 2: UTILITÁRIOS E HELPERS ---
+            // ===================================================================================
+            const utils = {
+                // Gera um ID único simples
+                generateId: (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+
+                // Formata data para o padrão brasileiro
+                formatDate: (dateString) => {
+                    if (!dateString) return 'N/A';
+                    const [year, month, day] = dateString.split('-');
+                    return `${day}/${month}/${year}`;
+                },
+
+                // Formata valores monetários
+                formatCurrency: (value) => `R$ ${Number(value).toFixed(2).replace('.', ',')}`,
+
+                // Converte a primeira letra para maiúscula
+                capitalize: (s) => s.charAt(0).toUpperCase() + s.slice(1),
+
+                // Obtém o nome de um item (produto, cliente, etc.) pelo seu ID
+                getNameById: (type, id) => {
+                    const item = state[type]?.find(i => i.id === id);
+                    return item ? item.name : 'Não encontrado';
+                },
+            };
+
+            // ===================================================================================
+            // --- MÓDULO 3: RENDERIZAÇÃO DA UI E COMPONENTES ---
+            // ===================================================================================
+            const ui = {
+                // Função principal de renderização que atualiza o conteúdo da página
+                render() {
+                    this.renderSidebar();
+                    this.renderPageContent();
+                    saveState(); // Salva o estado a cada renderização
+                },
+
+                // Renderiza a barra de navegação lateral
+                renderSidebar() {
+                    const navEl = document.getElementById('sidebar-nav');
+                    const navItems = [
+                        { id: 'dashboard', label: 'Dashboard', icon: 'M9 17v-2a4 4 0 00-4-4H3V9h2a4 4 0 004-4V3l5 4-5 4v-2a2 2 0 01-2-2h-1v2h1a2 2 0 012 2v2l5 4-5 4z' },
+                        { id: 'surgeries', label: 'Cirurgias', icon: 'M3 7h18M3 12h18M3 17h18' },
+                        { id: 'stock', label: 'Estoque', icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' },
+                        { id: 'registrations', label: 'Cadastros', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+                    ];
+
+                    navEl.innerHTML = navItems.map(item => `
+                        <a href="#" 
+                           class="flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors duration-200 
+                                  ${state.currentPage === item.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}"
+                           onclick="navigate('${item.id}')">
+                            <svg class="sidebar-icon mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${item.icon}"></path></svg>
+                            ${item.label}
+                        </a>
+                    `).join('');
+                },
+
+                // Direciona a renderização para a página correta com base no estado
+                renderPageContent() {
+                    const mainContent = document.getElementById('main-content');
+                    switch (state.currentPage) {
+                        case 'dashboard': mainContent.innerHTML = this.renderDashboard(); break;
+                        case 'surgeries': mainContent.innerHTML = this.renderSurgeriesPage(); break;
+                        case 'stock': mainContent.innerHTML = this.renderStockPage(); break;
+                        case 'registrations': mainContent.innerHTML = this.renderRegistrationsPage(); break;
+                        default: mainContent.innerHTML = `<h1 class="text-2xl font-bold">Página não encontrada</h1>`;
+                    }
+                },
+
+                // --- Funções de Geração de Componentes Reutilizáveis ---
+                createCard(title, content, footer, iconPath) {
+                    return `
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <div class="flex items-center">
+                                <svg class="h-8 w-8 text-blue-500 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${iconPath}"></path></svg>
+                                <div class="ml-4">
+                                    <h3 class="text-gray-500 text-sm font-medium">${title}</h3>
+                                    <p class="text-2xl font-bold text-gray-800">${content}</p>
+                                </div>
+                            </div>
+                            ${footer ? `<div class="mt-4 text-sm text-gray-500">${footer}</div>` : ''}
+                        </div>
+                    `;
+                },
+
+                createButton(text, action, type = 'primary') {
+                    const baseStyle = 'px-4 py-2 rounded-md font-medium ';
+                    let style;
+                    switch (type) {
+                        case 'primary':
+                            style = 'bg-blue-500 hover:bg-blue-600 text-white';
+                            break;
+                        case 'secondary':
+                            style = 'bg-gray-200 hover:bg-gray-300 text-gray-800';
+                            break;
+                        case 'danger':
+                            style = 'bg-red-500 hover:bg-red-600 text-white';
+                            break;
+                        default:
+                            style = 'bg-blue-500 hover:bg-blue-600 text-white';
+                    }
+                    return `<button onclick="${action}" class="${baseStyle} ${style}">${text}</button>`;
+                },
+
+                createFormInput(id, label, type = 'text', placeholder = '', value = '') {
+                    return `
+                        <div>
+                            <label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+                            <input type="${type}" id="${id}" value="${value}" placeholder="${placeholder}"
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                    `;
+                },
+
+                createFormSelect(id, label, options, selectedValue = '') {
+                    const optionsHtml = options.map(option => `
+                        <option value="${option.value}" ${option.value === selectedValue ? 'selected' : ''}>${option.text}</option>
+                    `).join('');
+                    return `
+                        <div>
+                            <label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+                            <select id="${id}" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                    `;
+                },
+
+                createFormCheckbox(id, label, isChecked = false) {
+                    return `
+                        <div class="flex items-center">
+                            <input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}
+                                   class="h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                            <label for="${id}" class="ml-2 block text-sm text-gray-900">${label}</label>
+                        </div>
+                    `;
+                },
+
+                createFormTextarea(id, label, placeholder = '', value = '') {
+                    return `
+                        <div>
+                            <label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+                            <textarea id="${id}" placeholder="${placeholder}"
+                                      class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">${value}</textarea>
+                        </div>
+                    `;
+                },
+
+                showToast(message, type = 'success') {
+                    const toastContainer = document.getElementById('toast-container');
+                    const toast = document.createElement('div');
+                    toast.className = `toast px-4 py-2 rounded-md shadow-lg text-white ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-gray-700'}`;
+                    toast.textContent = message;
+                    toastContainer.appendChild(toast);
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 3000);
+                },
+
+                createModal(title, content, actionsHtml, modalId) {
+                    const modalContainer = document.getElementById('modal-container');
+                    modalContainer.innerHTML = `
+                        <div class="modal-backdrop fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40"></div>
+                        <div class="modal bg-white p-6 rounded-lg shadow-lg z-50 w-1/2 animate-fadeIn">
+                            <h2 class="text-xl font-bold mb-4">${title}</h2>
+                            <div class="modal-content">
+                                ${content}
+                            </div>
+                            <div class="mt-6 flex justify-end space-x-2">
+                                ${actionsHtml}
+                                <button onclick="ui.closeModal(this)" class="bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md px-4 py-2">Cancelar</button>
+                            </div>
+                        </div>
+                    `;
+                },
+
+                closeModal(modalId) {
+                    const modalContainer = document.getElementById('modal-container');
+                    modalContainer.innerHTML = '';
+                }
+            };
+
+            // ===================================================================================
+            // --- MÓDULO 4: FUNÇÕES DE NEGÓCIO ---
+            // ===================================================================================
+            const navigate = (page) => {
+                state.currentPage = page;
+                ui.render();
+            };
+
+            const showRegistrationModal = (type, id = null) => {
+                let title = '';
+                let content = '';
+                let saveFunction = '';
+                let currentItem = {};
+
+                if (id) {
+                    currentItem = state[type].find(item => item.id === id);
+                }
+
+                switch (type) {
+                    case 'products':
+                        title = id ? 'Editar Produto' : 'Adicionar Produto';
+                        content = `
+                            <div class="space-y-4">
+                                ${ui.createFormInput('productName', 'Nome do Produto', 'text', 'Ex: Placa de Titânio', currentItem.name || '')}
+                                ${ui.createFormInput('productDescription', 'Descrição', 'text', 'Ex: Placa para fixação óssea', currentItem.description || '')}
+                                ${ui.createFormInput('productCostPrice', 'Preço de Custo', 'number', '0.00', currentItem.costPrice || '')}
+                                ${ui.createFormInput('productSellPrice', 'Preço de Venda', 'number', '0.00', currentItem.sellPrice || '')}
+                                ${ui.createFormCheckbox('productNeedsSerialNumber', 'Requer número de série', currentItem.needsSerialNumber || false)}
+                                ${ui.createFormSelect('productSupplierId', 'Fornecedor', state.suppliers.map(s => ({ value: s.id, text: s.name })), currentItem.supplierId || '')}
+                            </div>
+                        `;
+                        saveFunction = `saveRegistration('products', '${id || ''}')`;
+                        break;
+                    case 'suppliers':
+                        title = id ? 'Editar Fornecedor' : 'Adicionar Fornecedor';
+                        content = `
+                            <div class="space-y-4">
+                                ${ui.createFormInput('supplierName', 'Nome do Fornecedor', 'text', 'Ex: Titanium Medical', currentItem.name || '')}
+                                ${ui.createFormInput('supplierContact', 'Contato', 'email', 'Ex: contato@empresa.com', currentItem.contact || '')}
+                            </div>
+                        `;
+                        saveFunction = `saveRegistration('suppliers', '${id || ''}')`;
+                        break;
+                    case 'clients':
+                        title = id ? 'Editar Cliente' : 'Adicionar Cliente';
+                        content = `
+                            <div class="space-y-4">
+                                ${ui.createFormInput('clientName', 'Nome do Cliente', 'text', 'Ex: Hospital Central', currentItem.name || '')}
+                                ${ui.createFormInput('clientAddress', 'Endereço', 'text', 'Ex: Rua das Flores, 123', currentItem.address || '')}
+                            </div>
+                        `;
+                        saveFunction = `saveRegistration('clients', '${id || ''}')`;
+                        break;
+                    case 'kits':
+                        title = id ? 'Editar Kit Cirúrgico' : 'Adicionar Kit Cirúrgico';
+                        const kitProductsHtml = currentItem.products ? currentItem.products.map((p, idx) => `
+                            <div class="flex items-center space-x-2 mb-2">
+                                ${ui.createFormSelect(`kitProduct_${idx}_id`, 'Produto', state.products.map(prod => ({ value: prod.id, text: prod.name })), p.productId)}
+                                ${ui.createFormInput(`kitProduct_${idx}_quantity`, 'Quantidade', 'number', '1', p.quantity)}
+                                <button onclick="removeKitProduct(${idx})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md">Remover</button>
+                            </div>
+                        `).join('') : '';
+                        content = `
+                            <div class="space-y-4">
+                                ${ui.createFormInput('kitName', 'Nome do Kit', 'text', 'Ex: Kit Básico de Osteossíntese', currentItem.name || '')}
+                                <div id="kit-products-container">
+                                    ${kitProductsHtml}
+                                </div>
+                                <button onclick="addKitProduct()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md">Adicionar Produto ao Kit</button>
+                            </div>
+                        `;
+                        saveFunction = `saveRegistration('kits', '${id || ''}')`;
+                        break;
+                }
+
+                const modalContent = `
+                    <form id="registrationForm">
+                        ${content}
+                        <div class="mt-4 flex justify-end space-x-2">
+                            <button type="button" onclick="ui.closeModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md px-4 py-2">Cancelar</button>
+                            <button type="button" onclick="${saveFunction}" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md">Salvar</button>
+                        </div>
+                    </form>
+                `;
+                ui.createModal(title, modalContent, '', 'registration-modal');
+            };
+
+            const saveRegistration = (type, id) => {
+                let newItem = {};
+                switch (type) {
+                    case 'products':
+                        newItem = {
+                            id: id || utils.generateId('P'),
+                            name: document.getElementById('productName').value,
+                            description: document.getElementById('productDescription').value,
+                            costPrice: parseFloat(document.getElementById('productCostPrice').value),
+                            sellPrice: parseFloat(document.getElementById('productSellPrice').value),
+                            needsSerialNumber: document.getElementById('productNeedsSerialNumber').checked,
+                            supplierId: document.getElementById('productSupplierId').value,
+                        };
+                        break;
+                    case 'suppliers':
+                        newItem = {
+                            id: id || utils.generateId('S'),
+                            name: document.getElementById('supplierName').value,
+                            contact: document.getElementById('supplierContact').value,
+                        };
+                        break;
+                    case 'clients':
+                        newItem = {
+                            id: id || utils.generateId('C'),
+                            name: document.getElementById('clientName').value,
+                            address: document.getElementById('clientAddress').value,
+                        };
+                        break;
+                    case 'kits':
+                        const kitProducts = [];
+                        document.querySelectorAll('#kit-products-container > div').forEach((div, idx) => {
+                            kitProducts.push({
+                                productId: document.getElementById(`kitProduct_${idx}_id`).value,
+                                quantity: parseInt(document.getElementById(`kitProduct_${idx}_quantity`).value, 10),
+                            });
+                        });
+                        newItem = {
+                            id: id || utils.generateId('K'),
+                            name: document.getElementById('kitName').value,
+                            products: kitProducts,
+                        };
+                        break;
+                }
+
+                if (id) {
+                    const index = state[type].findIndex(item => item.id === id);
+                    if (index !== -1) {
+                        state[type][index] = newItem;
+                    }
+                } else {
+                    state[type].push(newItem);
+                }
+                ui.closeModal('registration-modal');
+                ui.showToast('Registro salvo com sucesso!', 'success');
+                ui.render();
+            };
+
+            const deleteRegistration = (type, id) => {
+                if (confirm('Tem certeza que deseja excluir este registro?')) {
+                    state[type] = state[type].filter(item => item.id !== id);
+                    ui.showToast('Registro excluído com sucesso!', 'success');
+                    ui.render();
+                }
+            };
+
+            const addKitProduct = () => {
+                const container = document.getElementById('kit-products-container');
+                const newIndex = container.children.length;
+                const productOptions = state.products.map(prod => ({ value: prod.id, text: prod.name }));
+                const newProductHtml = `
+                    <div class="flex items-center space-x-2 mb-2">
+                        ${ui.createFormSelect(`kitProduct_${newIndex}_id`, 'Produto', productOptions)}
+                        ${ui.createFormInput(`kitProduct_${newIndex}_quantity`, 'Quantidade', 'number', '1')}
+                        <button onclick="removeKitProduct(${newIndex})" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-md">Remover</button>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', newProductHtml);
+            };
+
+            const removeKitProduct = (index) => {
+                const container = document.getElementById('kit-products-container');
+                container.children[index].remove();
+            };
+
+            // ===================================================================================
+            // --- MÓDULO 5: INICIALIZAÇÃO DA APLICAÇÃO ---
+            // ===================================================================================
+            document.addEventListener('DOMContentLoaded', () => {
+                const appLoader = document.getElementById('app-loader');
+                // Simula um tempo de carregamento para exibir o loader
+                setTimeout(() => {
+                    ui.render();
+                    appLoader.style.display = 'none';
+                }, 500); // Meio segundo de loader
+            });
+
+        </script>
+    </body>
+    </html>
+
+
+
+
